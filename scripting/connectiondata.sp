@@ -12,9 +12,10 @@ bool g_bLateLoad;
 Database g_Database;
 char g_sCurrentMap[80];
 char g_sServerIP[22];
+int g_iMapStart;
+int g_iMapId;
 
-
-enum struct Data {
+enum struct PlayerData {
 	char name[32];
 	bool initial;
 	char auth2[32];
@@ -30,7 +31,7 @@ enum struct Data {
 	}
 }
 
-Data g_Data[MAXPLAYERS+1];
+PlayerData g_PData[MAXPLAYERS+1];
 
 // ---------------
 
@@ -75,7 +76,7 @@ public void OnPluginStart() {
 	if (g_bLateLoad) {
 		for (int i = 1; i <= MaxClients; ++i) {
 			if (IsClientInGame(i) && !IsFakeClient(i)) {
-				GetClientAuthId(i, AuthId_Steam2, g_Data[i].auth2, sizeof Data::auth2);
+				GetClientAuthId(i, AuthId_Steam2, g_PData[i].auth2, sizeof PlayerData::auth2);
 			}
 		}
 	}
@@ -83,6 +84,8 @@ public void OnPluginStart() {
 
 public void OnMapStart() {
 	GetCurrentMap(g_sCurrentMap, sizeof g_sCurrentMap);
+	g_iMapStart = RoundFloat(GetEngineTime());
+	g_iMapId = 0;
 
 	if (g_bLateLoad) {
 		return;
@@ -112,16 +115,16 @@ public void eventPlayerConnect(Event event, const char[] name, bool dontBroadcas
 	}
 
 	int idx = event.GetInt("index") + 1;
-	g_Data[idx].initial = true;
-	event.GetString("name", g_Data[idx].name, sizeof Data::name);
+	g_PData[idx].initial = true;
+	event.GetString("name", g_PData[idx].name, sizeof PlayerData::name);
 }
 
 public void OnClientConnected(int client) {
-	if (!g_Data[client].initial) {
+	if (!g_PData[client].initial) {
 		return;
 	}
 
-	g_Data[client].initial = false;
+	g_PData[client].initial = false;
 
 	startClientSession(client);
 }
@@ -131,10 +134,10 @@ public void OnClientAuthorized(int client, const char[] auth) {
 		return;
 	}
 
-	GetClientAuthId(client, AuthId_Steam2, g_Data[client].auth2, sizeof Data::auth2);
+	GetClientAuthId(client, AuthId_Steam2, g_PData[client].auth2, sizeof PlayerData::auth2);
 
-	if (g_Data[client].inserted) {
-		if (g_Data[client].id) {
+	if (g_PData[client].inserted) {
+		if (g_PData[client].id) {
 			runAuthQuery(client);
 		}
 	}
@@ -146,11 +149,11 @@ public void OnClientAuthorized(int client, const char[] auth) {
 public Action timerWaitForInsertion(Handle timer, int userid) {
 	int client = GetClientOfUserId(userid);
 	if (client) {	
-		if (!g_Data[client].inserted) {
+		if (!g_PData[client].inserted) {
 			return Plugin_Continue;
 		}
 
-		if (g_Data[client].id) {
+		if (g_PData[client].id) {
 			runAuthQuery(client);
 		}
 	}
@@ -164,7 +167,7 @@ public void eventPlayerDisconnect(Event event, const char[] name, bool dontBroad
 	}
 
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	if (!client || IsFakeClient(client) || !g_Data[client].inserted) {
+	if (!client || IsFakeClient(client) || !g_PData[client].inserted) {
 		return;
 	}
 
@@ -259,6 +262,8 @@ public void dbConnect(Database db, const char[] error, any data) {
 			... "`totalSessions` INT NOT NULL"
 		... ")"
 	);
+
+	g_Database.Query(dbCreateTable, query);
 }
 
 public void dbCreateTable(Database db, DBResultSet results, const char[] error, any data) {
@@ -268,27 +273,9 @@ public void dbCreateTable(Database db, DBResultSet results, const char[] error, 
 	}
 }
 
-// --------------- Connection Queries
+// --------------- Map Queries
 
 void startMapSession() {
-/*
-	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `map_sessions` "
-		... "("
-			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
-			... "`serverip` VARCHAR(39) NOT NULL, "
-			... "`"
-			... "`date` DATE NOT NULL, "
-			... "`time` TIME(0) NOT NULL, "
-			... "`day` TINYINT NOT NULL, "
-			... "`dateString` VARCHAR(32) NOT NULL, "
-			... "`duration` INT DEFAULT NULL"
-		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
-		, increment
-	);
-
 	char date[16];
 	FormatTime(date, sizeof(date), "%Y-%m-%d");
 
@@ -303,61 +290,122 @@ void startMapSession() {
 
 	char query[2048];
 	g_Database.Format(query, sizeof query,
-		"INSERT INTO `connect_sessions` "
+		"INSERT INTO `map_sessions` "
 	... "("
 		... "`serverip`, "
 		... "`map`, "
-		... "`name`, "
-		... "`method`, "
 		... "`date`, "
 		... "`time`, "
 		... "`day`, "
-		... "`dateString`, "
-		... "`ip`, "
-		... "`city`, "
-		... "`region`, "
-		... "`country`"
+		... "`dateString`"
 	... ")"
-	... "VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s')"
+	... "VALUES ('%s', '%s', '%s', '%s', '%s', '%s')"
 		, g_sServerIP
-		, GetCurrentPlayerCount(client)
 		, g_sCurrentMap
-		, g_Data[client].name
-		, method
 		, date
 		, time
 		, day
 		, timeString
-		, ip
-		, city
-		, region
-		, country
 	);
 
-	g_Database.Query(dbClientConnect, query, GetClientUserId(client));
-	*/
+	g_Database.Query(dbMapSession, query);
+}
+
+public void dbMapSession(Database db, DBResultSet results, const char[] error, int userid) {
+	if (!db || !results || error[0]) {
+		LogError("Map Session query failed. (%s)", error);
+		return;
+	}
+
+	g_iMapId = results.InsertId;
 }
 
 void endMapSession() {
-/*
-	g_Database.Query(dbCreateTable, query);
+	int duration = RoundFloat(GetEngineTime()) - g_iMapStart;
+	
+	char query[128];
 
-	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `map_totals` "
-		... "("
-			... "`name` VARCHAR(32) NOT NULL PRIMARY KEY, "
-			... "`totalTime` INT NOT NULL. "
-			... "`totalConnects` INT NOT NULL"
-		... ")"
+	g_Database.Format(query, sizeof query,
+		"UPDATE `map_sessions` "
+	... "SET `duration` = %i "
+	... "WHERE `id` = %i",
+		duration,
+		g_iMapId
 	);
-*/
+
+	g_Database.Query(dbUpdateMapSession, query);
+
+	DataPack dp = new DataPack();
+	dp.WriteCell(duration);
+	dp.WriteString(g_sCurrentMap);
+
+	g_Database.Format(query, sizeof query,
+		"SELECT `totalTime`, `totalSessions` FROM `map_totals` WHERE `map` = '%s'",
+		g_sCurrentMap
+	);
+
+	g_Database.Query(dbSelectMapTotals, query, dp);
 }
+
+public void dbUpdateMapSession(Database db, DBResultSet results, const char[] error, any data) {
+	if (!db || !results || error[0]) {
+		LogError("Update Map Session query failed. (%s)", error);
+		return;
+	}
+}
+
+public void dbSelectMapTotals(Database db, DBResultSet results, const char[] error, DataPack dp) {
+	if (!db || !results || error[0]) {
+		delete dp;
+		LogError("Select Map Totals query failed. (%s)", error);
+		return;
+	}
+
+	dp.Reset();
+
+	int current = dp.ReadCell();
+
+	char map[32];
+	dp.ReadString(map, sizeof map);
+
+	delete dp;
+
+	char query[256];
+	if (results.FetchRow()) {	
+		int time = results.FetchInt(0);
+		int count = results.FetchInt(1);
+
+		g_Database.Format(query, sizeof query,
+			"UPDATE `map_totals` "
+		... "SET `totalTime` = %i, `totalSessions` = %i "
+		... "WHERE `map` = '%s'",
+			time + current, count + 1,
+			map
+		);
+	}
+	else {
+		g_Database.Format(query, sizeof query,
+			"INSERT INTO `map_totals` (`map`, `totalTime`, `totalSessions`) VALUES ('%s', %i, 1)",
+			map,
+			current
+		);
+	}
+
+	g_Database.Query(dbUpdateMapTotals, query);
+}
+
+public void dbUpdateMapTotals(Database db, DBResultSet results, const char[] error, any data) {
+	if (!db || !results || error[0]) {
+		LogError("Update Map Totals query failed. (%s)", error);
+		return;
+	}
+}
+
+// --------------- Connection Queries
 
 void startClientSession(int client) {
 	char name[64];
-	g_Database.Escape(g_Data[client].name, name, sizeof name);
+	g_Database.Escape(g_PData[client].name, name, sizeof name);
 
 	char method[64];
 	if (GetClientInfo(client, "cl_connectmethod", method, sizeof method)) {
@@ -413,7 +461,7 @@ void startClientSession(int client) {
 		, g_sServerIP
 		, GetCurrentPlayerCount(client)
 		, g_sCurrentMap
-		, g_Data[client].name
+		, g_PData[client].name
 		, method
 		, date
 		, time
@@ -434,14 +482,14 @@ public void dbClientConnect(Database db, DBResultSet results, const char[] error
 		return;
 	}
 
-	g_Data[client].inserted = true;
+	g_PData[client].inserted = true;
 
 	if (!db || !results || error[0]) {
 		LogError("Client connection query failed. (%s)", error);
 		return;
 	}
 
-	g_Data[client].id = results.InsertId;
+	g_PData[client].id = results.InsertId;
 }
 
 void runAuthQuery(int client) {
@@ -450,8 +498,8 @@ void runAuthQuery(int client) {
 		"UPDATE `connect_sessions` "
 	... "SET `authid2` = '%s'"
 	... "WHERE `id` = %i",
-		g_Data[client].auth2,
-		g_Data[client].id
+		g_PData[client].auth2,
+		g_PData[client].id
 	);
 
 	g_Database.Query(dbSetAuth, query);
@@ -474,38 +522,38 @@ void endClientSession(int client) {
 	... "SET `duration` = %i "
 	... "WHERE `id` = %i",
 		duration,
-		g_Data[client].id
+		g_PData[client].id
 	);
 
-	g_Database.Query(dbUpdateSession, query);
+	g_Database.Query(dbUpdatePlayerSession, query);
 
-	if (g_Data[client].auth2[0]) {
+	if (g_PData[client].auth2[0]) {
 		DataPack dp = new DataPack();
 		dp.WriteCell(duration);
-		dp.WriteString(g_Data[client].auth2);
+		dp.WriteString(g_PData[client].auth2);
 
 		g_Database.Format(query, sizeof query,
 			"SELECT `totalTime`, `totalConnects` FROM `connect_totals` WHERE `authid2` = '%s'",
-			g_Data[client].auth2
+			g_PData[client].auth2
 		);
 
-		g_Database.Query(dbSelectTotals, query, dp);
+		g_Database.Query(dbSelectPlayerTotals, query, dp);
 	}
 
-	g_Data[client].Clear();
+	g_PData[client].Clear();
 }
 
-public void dbUpdateSession(Database db, DBResultSet results, const char[] error, any data) {
+public void dbUpdatePlayerSession(Database db, DBResultSet results, const char[] error, any data) {
 	if (!db || !results || error[0]) {
-		LogError("Update Session query failed. (%s)", error);
+		LogError("Update Player Session query failed. (%s)", error);
 		return;
 	}
 }
 
-public void dbSelectTotals(Database db, DBResultSet results, const char[] error, DataPack dp) {
+public void dbSelectPlayerTotals(Database db, DBResultSet results, const char[] error, DataPack dp) {
 	if (!db || !results || error[0]) {
 		delete dp;
-		LogError("Select Totals query failed. (%s)", error);
+		LogError("Select Player Totals query failed. (%s)", error);
 		return;
 	}
 
@@ -539,12 +587,12 @@ public void dbSelectTotals(Database db, DBResultSet results, const char[] error,
 		);
 	}
 
-	g_Database.Query(dbUpdateTotals, query);
+	g_Database.Query(dbUpdatePlayerTotals, query);
 }
 
-public void dbUpdateTotals(Database db, DBResultSet results, const char[] error, any data) {
+public void dbUpdatePlayerTotals(Database db, DBResultSet results, const char[] error, any data) {
 	if (!db || !results || error[0]) {
-		LogError("Update Totals query failed. (%s)", error);
+		LogError("Update Player Totals query failed. (%s)", error);
 		return;
 	}
 }
