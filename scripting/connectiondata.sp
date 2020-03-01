@@ -244,7 +244,7 @@ void startClientSession(int client) {
 	GeoipCountry(ip, country, sizeof country);
 
 	char query[2048];
-	FormatEx(query, sizeof query,
+	g_Database.Format(query, sizeof query,
 		"INSERT INTO `connect_sessions` "
 	... "("
 		... "`serverip`, "
