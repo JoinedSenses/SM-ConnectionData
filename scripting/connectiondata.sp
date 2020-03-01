@@ -7,6 +7,7 @@
 #define PLUGIN_VERSION "0.0.2"
 #define PLUGIN_DESCRIPTION "Stores player connection data"
 
+bool g_bLateLoad;
 
 Database g_Database;
 char g_sCurrentMap[80];
@@ -43,6 +44,12 @@ public Plugin myinfo = {
 
 // ---------------
 
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
+	g_bLateLoad = late;
+
+	return APLRes_Success;
+}
+
 public void OnPluginStart() {
 	CreateConVar(
 		  "sm_connectiondata_version"
@@ -64,10 +71,33 @@ public void OnPluginStart() {
 		, ((ip & 0x000000FF) >>  0) & 0xFF
 		, FindConVar("hostport").IntValue
 	);
+
+	if (g_bLateLoad) {
+		for (int i = 1; i <= MaxClients; ++i) {
+			if (IsClientInGame(i) && !IsFakeClient(i)) {
+				GetClientAuthId(i, AuthId_Steam2, g_Data[i].auth2, sizeof Data::auth2);
+			}
+		}
+	}
 }
 
 public void OnMapStart() {
 	GetCurrentMap(g_sCurrentMap, sizeof g_sCurrentMap);
+
+	if (g_bLateLoad) {
+		return;
+	}
+
+	startMapSession();
+}
+
+public void OnMapEnd() {
+	if (g_bLateLoad) {
+		g_bLateLoad = false;
+		return;
+	}
+
+	endMapSession();
 }
 
 // ---------------
@@ -169,7 +199,7 @@ public void dbConnect(Database db, const char[] error, any data) {
 			... "`serverip` VARCHAR(39) NOT NULL, "
 			... "`playerCount` TINYINT NOT NULL, "
 			... "`map` VARCHAR(80) NOT NULL, "
-			... "`name` VARCHAR(32) NOT NULL, "
+			... "`name` VARCHAR(64) NOT NULL, "
 			... "`authid2` VARCHAR(32) DEFAULT NULL, "
 			... "`method` VARCHAR(64) DEFAULT NULL, "
 			... "`date` DATE NOT NULL, "
@@ -199,6 +229,36 @@ public void dbConnect(Database db, const char[] error, any data) {
 	);
 
 	g_Database.Query(dbCreateTable, query);
+
+	g_Database.Format(
+		  query
+		, sizeof query
+		, "CREATE TABLE IF NOT EXISTS `map_sessions` "
+		... "("
+			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
+			... "`serverip` VARCHAR(39) NOT NULL, "
+			... "`map` VARCHAR(80) "
+			... "`date` DATE NOT NULL, "
+			... "`time` TIME(0) NOT NULL, "
+			... "`day` TINYINT NOT NULL, "
+			... "`dateString` VARCHAR(32) NOT NULL, "
+			... "`duration` INT DEFAULT NULL"
+		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
+		, increment
+	);
+
+	g_Database.Query(dbCreateTable, query);
+
+	g_Database.Format(
+		  query
+		, sizeof query
+		, "CREATE TABLE IF NOT EXISTS `map_totals` "
+		... "("
+			... "`map` VARCHAR(80) NOT NULL PRIMARY KEY, "
+			... "`totalTime` INT NOT NULL. "
+			... "`totalSessions` INT NOT NULL"
+		... ")"
+	);
 }
 
 public void dbCreateTable(Database db, DBResultSet results, const char[] error, any data) {
@@ -210,9 +270,97 @@ public void dbCreateTable(Database db, DBResultSet results, const char[] error, 
 
 // --------------- Connection Queries
 
+void startMapSession() {
+/*
+	g_Database.Format(
+		  query
+		, sizeof query
+		, "CREATE TABLE IF NOT EXISTS `map_sessions` "
+		... "("
+			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
+			... "`serverip` VARCHAR(39) NOT NULL, "
+			... "`"
+			... "`date` DATE NOT NULL, "
+			... "`time` TIME(0) NOT NULL, "
+			... "`day` TINYINT NOT NULL, "
+			... "`dateString` VARCHAR(32) NOT NULL, "
+			... "`duration` INT DEFAULT NULL"
+		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
+		, increment
+	);
+
+	char date[16];
+	FormatTime(date, sizeof(date), "%Y-%m-%d");
+
+	char time[32];
+	FormatTime(time, sizeof time, "%X");
+
+	char day[2];
+	FormatTime(day, sizeof day, "%w");
+
+	char timeString[64];
+	FormatTime(timeString, sizeof timeString, "%H:%M:%S %p %a %d %b %Y");
+
+	char query[2048];
+	g_Database.Format(query, sizeof query,
+		"INSERT INTO `connect_sessions` "
+	... "("
+		... "`serverip`, "
+		... "`map`, "
+		... "`name`, "
+		... "`method`, "
+		... "`date`, "
+		... "`time`, "
+		... "`day`, "
+		... "`dateString`, "
+		... "`ip`, "
+		... "`city`, "
+		... "`region`, "
+		... "`country`"
+	... ")"
+	... "VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s')"
+		, g_sServerIP
+		, GetCurrentPlayerCount(client)
+		, g_sCurrentMap
+		, g_Data[client].name
+		, method
+		, date
+		, time
+		, day
+		, timeString
+		, ip
+		, city
+		, region
+		, country
+	);
+
+	g_Database.Query(dbClientConnect, query, GetClientUserId(client));
+	*/
+}
+
+void endMapSession() {
+/*
+	g_Database.Query(dbCreateTable, query);
+
+	g_Database.Format(
+		  query
+		, sizeof query
+		, "CREATE TABLE IF NOT EXISTS `map_totals` "
+		... "("
+			... "`name` VARCHAR(32) NOT NULL PRIMARY KEY, "
+			... "`totalTime` INT NOT NULL. "
+			... "`totalConnects` INT NOT NULL"
+		... ")"
+	);
+*/
+}
+
 void startClientSession(int client) {
+	char name[64];
+	g_Database.Escape(g_Data[client].name, name, sizeof name);
+
 	char method[64];
-	if (GetClientInfo(client, "cl_connectmethod", method, sizeof(method))) {
+	if (GetClientInfo(client, "cl_connectmethod", method, sizeof method)) {
 		Format(method, sizeof method, "'%s'", method);
 	}
 	else {
@@ -244,7 +392,7 @@ void startClientSession(int client) {
 	GeoipCountry(ip, country, sizeof country);
 
 	char query[2048];
-	g_Database.Format(query, sizeof query,
+	FormatEx(query, sizeof query,
 		"INSERT INTO `connect_sessions` "
 	... "("
 		... "`serverip`, "
