@@ -4,7 +4,7 @@
 #include <sourcemod>
 #include <geoip>
 
-#define PLUGIN_VERSION "0.0.1"
+#define PLUGIN_VERSION "0.0.2"
 #define PLUGIN_DESCRIPTION "Stores player connection data"
 
 
@@ -356,6 +356,7 @@ public void dbUpdateSession(Database db, DBResultSet results, const char[] error
 
 public void dbSelectTotals(Database db, DBResultSet results, const char[] error, DataPack dp) {
 	if (!db || !results || error[0]) {
+		delete dp;
 		LogError("Select Totals query failed. (%s)", error);
 		return;
 	}
