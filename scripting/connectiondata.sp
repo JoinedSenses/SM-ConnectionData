@@ -55,7 +55,7 @@ public void OnPluginStart() {
 	CreateConVar(
 		  "sm_connectiondata_version"
 		, PLUGIN_VERSION, PLUGIN_DESCRIPTION
-		, FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD
+		, FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_DONTRECORD
 	).SetString(PLUGIN_VERSION);
 
 	Database.Connect(dbConnect, "connectiondata");
