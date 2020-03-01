@@ -141,7 +141,74 @@ public void eventPlayerDisconnect(Event event, const char[] name, bool dontBroad
 	endClientSession(client);
 }
 
-// ---------------
+// --------------- Connection and Table Creation
+
+public void dbConnect(Database db, const char[] error, any data) {
+	if (db == null || error[0]) {
+		LogError("Unable to connect to database (%s)", error);
+		return;
+	}
+
+	g_Database = db;
+
+	char dbType[16];
+	g_Database.Driver.GetProduct(dbType, sizeof dbType);
+
+	char increment[16];
+	strcopy(increment, sizeof increment
+		, (StrEqual(dbType, "mysql", false) ? "AUTO_INCREMENT" : "AUTOINCREMENT")
+	);
+
+	char query[1024];
+	g_Database.Format(
+		  query
+		, sizeof query
+		, "CREATE TABLE IF NOT EXISTS `connect_sessions` "
+		... "("
+			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
+			... "`serverip` VARCHAR(39) NOT NULL, "
+			... "`playerCount` TINYINT NOT NULL, "
+			... "`map` VARCHAR(80) NOT NULL, "
+			... "`name` VARCHAR(32) NOT NULL, "
+			... "`authid2` VARCHAR(32) DEFAULT NULL, "
+			... "`method` VARCHAR(64) DEFAULT NULL, "
+			... "`date` DATE NOT NULL, "
+			... "`time` TIME(0) NOT NULL, "
+			... "`day` TINYINT NOT NULL, "
+			... "`dateString` VARCHAR(32) NOT NULL, "
+			... "`duration` INT DEFAULT NULL, "
+			... "`ip` VARCHAR(39) NOT NULL, "
+			... "`city` VARCHAR(64) NOT NULL, "
+			... "`region` VARCHAR(64) NOT NULL, "
+			... "`country` VARCHAR(64) NOT NULL"
+		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
+		, increment
+	);
+
+	g_Database.Query(dbCreateTable, query);
+
+	g_Database.Format(
+		  query
+		, sizeof query
+		, "CREATE TABLE IF NOT EXISTS `connect_totals` "
+		... "("
+			... "`authid2` VARCHAR(32) NOT NULL PRIMARY KEY, "
+			... "`totalTime` INT NOT NULL, "
+			... "`totalConnects` INT NOT NULL"
+		... ")"
+	);
+
+	g_Database.Query(dbCreateTable, query);
+}
+
+public void dbCreateTable(Database db, DBResultSet results, const char[] error, any data) {
+	if (!db || !results || error[0]) {
+		LogError("Table creation query failed. (%s)", error);
+		return;
+	}
+}
+
+// --------------- Connection Queries
 
 void startClientSession(int client) {
 	char method[64];
@@ -211,71 +278,6 @@ void startClientSession(int client) {
 	);
 
 	g_Database.Query(dbClientConnect, query, GetClientUserId(client));
-}
-
-public void dbConnect(Database db, const char[] error, any data) {
-	if (db == null || error[0]) {
-		LogError("Unable to connect to database (%s)", error);
-		return;
-	}
-
-	g_Database = db;
-
-	char dbType[16];
-	g_Database.Driver.GetProduct(dbType, sizeof dbType);
-
-	char increment[16];
-	strcopy(increment, sizeof increment
-		, (StrEqual(dbType, "mysql", false) ? "AUTO_INCREMENT" : "AUTOINCREMENT")
-	);
-
-	char query[1024];
-	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `connect_sessions` "
-		... "("
-			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
-			... "`serverip` VARCHAR(39) NOT NULL, "
-			... "`playerCount` TINYINT NOT NULL, "
-			... "`map` VARCHAR(80) NOT NULL, "
-			... "`name` VARCHAR(32) NOT NULL, "
-			... "`authid2` VARCHAR(32) DEFAULT NULL, "
-			... "`method` VARCHAR(64) DEFAULT NULL, "
-			... "`date` DATE NOT NULL, "
-			... "`time` TIME(0) NOT NULL, "
-			... "`day` TINYINT NOT NULL, "
-			... "`dateString` VARCHAR(32) NOT NULL, "
-			... "`duration` INT DEFAULT NULL, "
-			... "`ip` VARCHAR(39) NOT NULL, "
-			... "`city` VARCHAR(64) NOT NULL, "
-			... "`region` VARCHAR(64) NOT NULL, "
-			... "`country` VARCHAR(64) NOT NULL"
-		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
-		, increment
-	);
-
-	g_Database.Query(dbCreateTable, query);
-
-	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `connect_totals` "
-		... "("
-			... "`authid2` VARCHAR(32) NOT NULL PRIMARY KEY, "
-			... "`totalTime` INT NOT NULL, "
-			... "`totalConnects` INT NOT NULL"
-		... ")"
-	);
-
-	g_Database.Query(dbCreateTable, query);
-}
-
-public void dbCreateTable(Database db, DBResultSet results, const char[] error, any data) {
-	if (!db || !results || error[0]) {
-		LogError("Table creation query failed. (%s)", error);
-		return;
-	}
 }
 
 public void dbClientConnect(Database db, DBResultSet results, const char[] error, int userid) {
