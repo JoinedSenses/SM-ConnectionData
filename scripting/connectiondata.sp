@@ -5,7 +5,7 @@
 #include <geoip>
 
 #define PLUGIN_VERSION "0.1.0"
-#define PLUGIN_DESCRIPTION "Stores player connection data"
+#define PLUGIN_DESCRIPTION "Stores player connection and map history data."
 
 bool g_bLateLoad;
 
