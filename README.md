@@ -1,5 +1,5 @@
 # SM-ConnectionData
-SourceMod plugin which stores player connection data to database.  
+SourceMod plugin which stores player connection and map history data to database. 
 Requires GeoIP2 extension.  
 
 Add a database configuration for "connectiondata" to databases.cfg.  
