@@ -4,7 +4,7 @@
 #include <sourcemod>
 #include <geoip>
 
-#define PLUGIN_VERSION "0.0.3"
+#define PLUGIN_VERSION "0.1.0"
 #define PLUGIN_DESCRIPTION "Stores player connection data"
 
 bool g_bLateLoad;
