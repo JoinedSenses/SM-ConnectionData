@@ -237,7 +237,7 @@ public void dbConnect(Database db, const char[] error, any data) {
 		... "("
 			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
 			... "`serverip` VARCHAR(39) NOT NULL, "
-			... "`map` VARCHAR(80) "
+			... "`map` VARCHAR(80), "
 			... "`date` DATE NOT NULL, "
 			... "`time` TIME(0) NOT NULL, "
 			... "`day` TINYINT NOT NULL, "
@@ -255,7 +255,7 @@ public void dbConnect(Database db, const char[] error, any data) {
 		, "CREATE TABLE IF NOT EXISTS `map_totals` "
 		... "("
 			... "`map` VARCHAR(80) NOT NULL PRIMARY KEY, "
-			... "`totalTime` INT NOT NULL. "
+			... "`totalTime` INT NOT NULL, "
 			... "`totalSessions` INT NOT NULL"
 		... ")"
 	);
