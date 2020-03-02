@@ -14,8 +14,10 @@ bool g_bPluginStarting;
 bool g_bPluginEnding;
 
 Database g_Database;
-char g_sCurrentMap[80];
+
 char g_sServerIP[22];
+
+char g_sMapName[80];
 int g_iMapStart;
 int g_iMapId;
 
@@ -89,7 +91,7 @@ public void OnPluginStart() {
 }
 
 public void OnMapStart() {
-	GetCurrentMap(g_sCurrentMap, sizeof g_sCurrentMap);
+	GetCurrentMap(g_sMapName, sizeof g_sMapName);
 	g_iMapStart = RoundFloat(GetEngineTime());
 	g_iMapId = 0;
 
@@ -324,7 +326,7 @@ void attemptLoadMapSession() {
 		query,
 		sizeof query,
 		"SELECT `id`, `duration` FROM `map_sessions` WHERE `map` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
-		g_sCurrentMap,
+		g_sMapName,
 		g_sServerIP
 	);
 
@@ -376,7 +378,7 @@ void startMapSession() {
 	... ")"
 	... "VALUES ('%s', '%s', '%s', '%s', '%s', '%s')"
 		, g_sServerIP
-		, g_sCurrentMap
+		, g_sMapName
 		, date
 		, time
 		, day
@@ -412,11 +414,11 @@ void endMapSession() {
 
 	DataPack dp = new DataPack();
 	dp.WriteCell(duration);
-	dp.WriteString(g_sCurrentMap);
+	dp.WriteString(g_sMapName);
 
 	g_Database.Format(query, sizeof query,
 		"SELECT `totalTime`, `totalSessions` FROM `map_totals` WHERE `map` = '%s'",
-		g_sCurrentMap
+		g_sMapName
 	);
 
 	g_Database.Query(dbSelectMapTotals, query, dp);
@@ -573,7 +575,7 @@ void startClientSession(int client) {
 	... "VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s')"
 		, g_sServerIP
 		, GetCurrentPlayerCount(client)
-		, g_sCurrentMap
+		, g_sMapName
 		, g_PData[client].name
 		, method
 		, date
