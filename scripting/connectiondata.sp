@@ -325,7 +325,8 @@ void attemptLoadMapSession() {
 	g_Database.Format(
 		query,
 		sizeof query,
-		"SELECT `id`, `duration` FROM `map_sessions` WHERE `map` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
+		"SELECT `id`, `duration` FROM `map_sessions` "
+	... "WHERE `map` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
 		g_sMapName,
 		g_sServerIP
 	);
@@ -489,7 +490,8 @@ void attemptLoadClientSession(int client) {
 	g_Database.Format(
 		query,
 		sizeof query,
-		"SELECT `id` FROM `connect_sessions` WHERE `authid2` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
+		"SELECT `id` FROM `connect_sessions` "
+	... "WHERE `authid2` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
 		g_PData[client].auth2,
 		g_sServerIP
 	);
