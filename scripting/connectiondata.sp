@@ -4,10 +4,14 @@
 #include <sourcemod>
 #include <geoip>
 
-#define PLUGIN_VERSION "0.1.0"
+#define PLUGIN_VERSION "0.1.1"
 #define PLUGIN_DESCRIPTION "Stores player connection and map history data."
 
+#define DEBUG 0
+
 bool g_bLateLoad;
+bool g_bPluginStarting;
+bool g_bPluginEnding;
 
 Database g_Database;
 char g_sCurrentMap[80];
@@ -75,11 +79,13 @@ public void OnPluginStart() {
 
 	if (g_bLateLoad) {
 		for (int i = 1; i <= MaxClients; ++i) {
-			if (IsClientInGame(i) && !IsFakeClient(i)) {
+			if (IsClientInGame(i) && !IsFakeClient(i) && !IsClientSourceTV(i) && !IsClientReplay(i) && IsClientAuthorized(i)) {
 				GetClientAuthId(i, AuthId_Steam2, g_PData[i].auth2, sizeof PlayerData::auth2);
 			}
 		}
 	}
+
+	g_bPluginStarting = true;
 }
 
 public void OnMapStart() {
@@ -87,7 +93,7 @@ public void OnMapStart() {
 	g_iMapStart = RoundFloat(GetEngineTime());
 	g_iMapId = 0;
 
-	if (g_bLateLoad) {
+	if (g_bLateLoad || !g_Database) {
 		return;
 	}
 
@@ -100,7 +106,23 @@ public void OnMapEnd() {
 		return;
 	}
 
+	if (!g_Database) {
+		return;
+	}
+
 	endMapSession();
+}
+
+public void OnPluginEnd() {
+	g_bPluginEnding = true;
+
+	endMapSession();
+
+	for (int i = 1; i <= MaxClients; ++i) {
+		if (IsClientInGame(i) && g_PData[i].auth2[0]) {
+			endClientSession(i);
+		}
+	}
 }
 
 // ---------------
@@ -120,7 +142,7 @@ public void eventPlayerConnect(Event event, const char[] name, bool dontBroadcas
 }
 
 public void OnClientConnected(int client) {
-	if (!g_PData[client].initial) {
+	if (!g_Database || !g_PData[client].initial) {
 		return;
 	}
 
@@ -130,7 +152,7 @@ public void OnClientConnected(int client) {
 }
 
 public void OnClientAuthorized(int client, const char[] auth) {
-	if (!g_Database || IsFakeClient(client)) {
+	if (!g_Database || IsFakeClient(client) || IsClientSourceTV(client) || IsClientReplay(client)) {
 		return;
 	}
 
@@ -264,6 +286,23 @@ public void dbConnect(Database db, const char[] error, any data) {
 	);
 
 	g_Database.Query(dbCreateTable, query);
+
+	if (g_bPluginStarting) {
+		if (!g_bLateLoad) {
+			startMapSession();
+		}
+		else {
+			attemptLoadMapSession();
+
+			for (int i = 1; i <= MaxClients; ++i) {
+				if (IsClientInGame(i) && g_PData[i].auth2[0]) {
+					attemptLoadClientSession(i);
+				}
+			}
+		}
+
+		g_bPluginStarting = false;
+	}
 }
 
 public void dbCreateTable(Database db, DBResultSet results, const char[] error, any data) {
@@ -274,6 +313,41 @@ public void dbCreateTable(Database db, DBResultSet results, const char[] error, 
 }
 
 // --------------- Map Queries
+
+void attemptLoadMapSession() {
+#if DEBUG
+	PrintToChatAll("Attempting to load map session");
+#endif
+
+	char query[1024];
+	g_Database.Format(
+		query,
+		sizeof query,
+		"SELECT `id`, `duration` FROM `map_sessions` WHERE `map` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
+		g_sCurrentMap
+	);
+
+	g_Database.Query(dbLoadMapSession, query);
+}
+
+public void dbLoadMapSession(Database db, DBResultSet results, char[] error, any data) {
+	if (!db || !results || error[0]) {
+		LogError("Client Load Session query failed. (%s)", error);
+		return;
+	}
+
+	if (results.FetchRow()) {
+#if DEBUG
+		PrintToChatAll("Map results fetched.\nCurrent map start %i", g_iMapStart);
+#endif
+		g_iMapId = results.FetchInt(0);
+		g_iMapStart -= results.FetchInt(1);
+
+#if DEBUG
+		PrintToChatAll("Modified map start %i from id %i", g_iMapStart, g_iMapId);
+#endif
+	}
+}
 
 void startMapSession() {
 	char date[16];
@@ -371,7 +445,7 @@ public void dbSelectMapTotals(Database db, DBResultSet results, const char[] err
 	delete dp;
 
 	char query[256];
-	if (results.FetchRow()) {	
+	if (results.FetchRow()) {
 		int time = results.FetchInt(0);
 		int count = results.FetchInt(1);
 
@@ -379,7 +453,7 @@ public void dbSelectMapTotals(Database db, DBResultSet results, const char[] err
 			"UPDATE `map_totals` "
 		... "SET `totalTime` = %i, `totalSessions` = %i "
 		... "WHERE `map` = '%s'",
-			time + current, count + 1,
+			time + current, count + view_as<int>(!g_bPluginEnding), // dont add 1 if plugin is ending early
 			map
 		);
 	}
@@ -402,6 +476,43 @@ public void dbUpdateMapTotals(Database db, DBResultSet results, const char[] err
 }
 
 // --------------- Connection Queries
+
+void attemptLoadClientSession(int client) {
+#if DEBUG
+		PrintToChatAll("Attempting to load session for %N", client);
+#endif
+
+	char query[1024];
+	g_Database.Format(
+		query,
+		sizeof query,
+		"SELECT `id` FROM `connect_sessions` WHERE `authid2` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
+		g_PData[client].auth2
+	);
+
+	g_Database.Query(dbLoadClientSession, query, GetClientUserId(client));
+}
+
+public void dbLoadClientSession(Database db, DBResultSet results, char[] error, int userid) {
+	if (!db || !results || error[0]) {
+		LogError("Client Load Session query failed. (%s)", error);
+		return;
+	}
+
+	int client = GetClientOfUserId(userid);
+	if (!client) {
+		return;
+	}
+
+	g_PData[client].inserted = true;
+	if (results.FetchRow()) {
+		g_PData[client].id = results.FetchInt(0);
+	}
+
+#if DEBUG
+	PrintToChatAll("Resulting ID for %N: %i", client, g_PData[client].id);
+#endif
+}
 
 void startClientSession(int client) {
 	char name[64];
@@ -478,7 +589,7 @@ void startClientSession(int client) {
 
 public void dbClientConnect(Database db, DBResultSet results, const char[] error, int userid) {
 	int client = GetClientOfUserId(userid);
-	if (!client || IsFakeClient(client)) {
+	if (!client) {
 		return;
 	}
 
@@ -575,7 +686,7 @@ public void dbSelectPlayerTotals(Database db, DBResultSet results, const char[] 
 			"UPDATE `connect_totals` "
 		... "SET `totalTime` = %i, `totalConnects` = %i "
 		... "WHERE `authid2` = '%s'",
-			time + current, count + 1,
+			time + current, count + view_as<int>(!g_bPluginEnding), // dont add 1 if plugin is ending early
 			authid2
 		);
 	}
