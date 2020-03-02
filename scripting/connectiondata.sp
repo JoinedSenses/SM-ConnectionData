@@ -111,8 +111,7 @@ public void OnMapEnd() {
 }
 
 /**
- * If for whatever reason the plugin is ending, end the map and client sessions.
- */
+ * If for whatever reason the plugin is ending, end the map and client sessions. */
 public void OnPluginEnd() {
 	g_bPluginEnding = true;
 
