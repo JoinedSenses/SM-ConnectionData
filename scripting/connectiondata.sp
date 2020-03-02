@@ -39,7 +39,7 @@ enum struct PlayerData {
 
 PlayerData g_PData[MAXPLAYERS+1];
 
-// ---------------
+// --------------- Info
 
 public Plugin myinfo = {
 	name = "Connection Data",
@@ -49,7 +49,7 @@ public Plugin myinfo = {
 	url = "https://github.com/JoinedSenses"
 };
 
-// ---------------
+// --------------- Server/Plugin Events
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
 	g_bLateLoad = late;
@@ -103,18 +103,16 @@ public void OnMapStart() {
 }
 
 public void OnMapEnd() {
-	if (g_bLateLoad) {
-		g_bLateLoad = false;
-		return;
-	}
-
-	if (!g_Database) {
+	if (!g_Database || !g_iMapId) {
 		return;
 	}
 
 	endMapSession();
 }
 
+/**
+ * If for whatever reason the plugin is ending, end the map and client sessions.
+ */
 public void OnPluginEnd() {
 	g_bPluginEnding = true;
 
@@ -127,8 +125,12 @@ public void OnPluginEnd() {
 	}
 }
 
-// ---------------
+// --------------- Client Events
 
+/**
+ * This event only fires once, when client initially connects. It's also too early
+ * to start the client session. The workaround is to wait until they have fully
+ * connected with the OnClientConnected forward. */
 public void eventPlayerConnect(Event event, const char[] name, bool dontBroadcast) {
 	if (!g_Database) {
 		return;
@@ -139,10 +141,16 @@ public void eventPlayerConnect(Event event, const char[] name, bool dontBroadcas
 	}
 
 	int idx = event.GetInt("index") + 1;
+
+	g_PData[idx].Clear();
 	g_PData[idx].initial = true;
+
 	event.GetString("name", g_PData[idx].name, sizeof PlayerData::name);
 }
 
+/**
+ * This forward fires every map change; A check is added to see if it's the first
+ * time a player has connected to the server. */
 public void OnClientConnected(int client) {
 	if (!g_Database || !g_PData[client].initial) {
 		return;
@@ -153,6 +161,8 @@ public void OnClientConnected(int client) {
 	startClientSession(client);
 }
 
+/**
+ * Called when a client has authenticated with steam server. Used to retrieve their steamid. */
 public void OnClientAuthorized(int client, const char[] auth) {
 	if (!g_Database || IsFakeClient(client) || IsClientSourceTV(client) || IsClientReplay(client)) {
 		return;
@@ -160,6 +170,8 @@ public void OnClientAuthorized(int client, const char[] auth) {
 
 	GetClientAuthId(client, AuthId_Steam2, g_PData[client].auth2, sizeof PlayerData::auth2);
 
+	/* If the connection query has not completed, create a repeating timer that loops until
+	 * the insertion has completed or been attempted. */
 	if (g_PData[client].inserted) {
 		if (g_PData[client].id) {
 			runAuthQuery(client);
@@ -170,9 +182,14 @@ public void OnClientAuthorized(int client, const char[] auth) {
 	}
 }
 
+/**
+ * Timer that loops until insertion has completed. If client disconnects before
+ * insertion completion, the session data will be missing the steamid for this client.
+ * This may happen if they only connected for a few seconds or if somehow the query
+ * took longer than expected. */
 public Action timerWaitForInsertion(Handle timer, int userid) {
 	int client = GetClientOfUserId(userid);
-	if (client) {	
+	if (client) {
 		if (!g_PData[client].inserted) {
 			return Plugin_Continue;
 		}
@@ -185,6 +202,8 @@ public Action timerWaitForInsertion(Handle timer, int userid) {
 	return Plugin_Stop;
 }
 
+/**
+ * Ends the client session and updates totals if their session was added to the database. */
 public void eventPlayerDisconnect(Event event, const char[] name, bool dontBroadcast) {
 	if (!g_Database) {
 		return;
@@ -200,10 +219,12 @@ public void eventPlayerDisconnect(Event event, const char[] name, bool dontBroad
 
 // --------------- Connection and Table Creation
 
+/**
+ * Called when database connection attempt has completed.
+ * Attempts to create tables and load map/client session data. */
 public void dbConnect(Database db, const char[] error, any data) {
 	if (db == null || error[0]) {
-		LogError("Unable to connect to database (%s)", error);
-		return;
+		SetFailState("Unable to connect to database (%s)", error);
 	}
 
 	g_Database = db;
@@ -289,6 +310,7 @@ public void dbConnect(Database db, const char[] error, any data) {
 
 	g_Database.Query(dbCreateTable, query);
 
+
 	if (g_bPluginStarting) {
 		if (!g_bLateLoad) {
 			startMapSession();
@@ -304,6 +326,7 @@ public void dbConnect(Database db, const char[] error, any data) {
 		}
 
 		g_bPluginStarting = false;
+		g_bLateLoad = false;
 	}
 }
 
@@ -316,6 +339,9 @@ public void dbCreateTable(Database db, DBResultSet results, const char[] error, 
 
 // --------------- Map Queries
 
+/**
+ * Function called when plugin has late loaded.
+ * Selects id and duration from most recent session from connecting IP */
 void attemptLoadMapSession() {
 #if DEBUG
 	PrintToChatAll("Attempting to load map session");
@@ -480,7 +506,9 @@ public void dbUpdateMapTotals(Database db, DBResultSet results, const char[] err
 }
 
 // --------------- Connection Queries
-
+/**
+ * Function called when plugin has late loaded.
+ * Selects id from most recent session from connecting IP */
 void attemptLoadClientSession(int client) {
 #if DEBUG
 		PrintToChatAll("Attempting to load session for %N", client);
@@ -656,8 +684,6 @@ void endClientSession(int client) {
 
 		g_Database.Query(dbSelectPlayerTotals, query, dp);
 	}
-
-	g_PData[client].Clear();
 }
 
 public void dbUpdatePlayerSession(Database db, DBResultSet results, const char[] error, any data) {
@@ -714,6 +740,8 @@ public void dbUpdatePlayerTotals(Database db, DBResultSet results, const char[] 
 	}
 }
 
+/*
+ * Returns player count minus client. Used to update totals when client connects */
 int GetCurrentPlayerCount(int client) {
 	int count = 0;
 	for (int i = 1; i <= MaxClients; ++i) {
