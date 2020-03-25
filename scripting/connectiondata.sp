@@ -4,7 +4,7 @@
 #include <sourcemod>
 #include <geoip>
 
-#define PLUGIN_VERSION "0.1.1"
+#define PLUGIN_VERSION "0.1.2"
 #define PLUGIN_DESCRIPTION "Stores player connection and map history data."
 
 #define DEBUG 0
@@ -22,7 +22,7 @@ int g_iMapStart;
 int g_iMapId;
 
 enum struct PlayerData {
-	char name[32];
+	char name[MAX_NAME_LENGTH];
 	bool initial;
 	char auth2[32];
 	bool inserted;
@@ -548,7 +548,7 @@ public void dbLoadClientSession(Database db, DBResultSet results, char[] error, 
 }
 
 void startClientSession(int client) {
-	char name[64];
+	char name[MAX_NAME_LENGTH];
 	g_Database.Escape(g_PData[client].name, name, sizeof name);
 
 	char method[64];
@@ -605,7 +605,7 @@ void startClientSession(int client) {
 		, g_sServerIP
 		, GetCurrentPlayerCount(client)
 		, g_sMapName
-		, g_PData[client].name
+		, name
 		, method
 		, date
 		, time
