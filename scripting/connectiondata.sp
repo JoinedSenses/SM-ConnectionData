@@ -4,7 +4,7 @@
 #include <sourcemod>
 #include <geoip>
 
-#define PLUGIN_VERSION "0.1.2"
+#define PLUGIN_VERSION "0.1.3"
 #define PLUGIN_DESCRIPTION "Stores player connection and map history data."
 
 #define DEBUG 0
@@ -583,6 +583,9 @@ void startClientSession(int client) {
 	char country[64];
 	GeoipCountry(ip, country, sizeof country);
 
+	char location[189];
+	g_Database.Format(location, sizeof location, "'%s', '%s', '%s'", city, region, country);
+
 	char query[2048];
 	FormatEx(query, sizeof query,
 		"INSERT INTO `connect_sessions` "
@@ -601,7 +604,7 @@ void startClientSession(int client) {
 		... "`region`, "
 		... "`country`"
 	... ")"
-	... "VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', '%s', '%s', '%s')"
+	... "VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', %s)"
 		, g_sServerIP
 		, GetCurrentPlayerCount(client)
 		, g_sMapName
@@ -612,9 +615,7 @@ void startClientSession(int client) {
 		, day
 		, timeString
 		, ip
-		, city
-		, region
-		, country
+		, location
 	);
 
 	g_Database.Query(dbClientConnect, query, GetClientUserId(client));
