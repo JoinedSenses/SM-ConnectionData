@@ -526,7 +526,7 @@ public void dbUpdateMapTotals(Database db, DBResultSet results, const char[] err
  * Selects id from most recent session from connecting IP */
 void attemptLoadClientSession(int client) {
 #if DEBUG
-		PrintToChatAll("Attempting to load session for %N", client);
+	PrintToChatAll("Attempting to load session for %N", client);
 #endif
 
 	char query[1024];
