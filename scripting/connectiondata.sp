@@ -4,7 +4,7 @@
 #include <sourcemod>
 #include <geoip>
 
-#define PLUGIN_VERSION "0.1.3"
+#define PLUGIN_VERSION "0.1.4"
 #define PLUGIN_DESCRIPTION "Stores player connection and map history data."
 
 #define DEBUG 0
@@ -59,9 +59,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart() {
 	CreateConVar(
-		  "sm_connectiondata_version"
-		, PLUGIN_VERSION, PLUGIN_DESCRIPTION
-		, FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_DONTRECORD
+		"sm_connectiondata_version",
+		PLUGIN_VERSION, PLUGIN_DESCRIPTION,
+		FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_DONTRECORD
 	).SetString(PLUGIN_VERSION);
 
 	Database.Connect(dbConnect, "connectiondata");
@@ -71,17 +71,21 @@ public void OnPluginStart() {
 
 	int ip = FindConVar("hostip").IntValue;
 
-	Format(g_sServerIP, sizeof g_sServerIP, "%d.%d.%d.%d:%d"
-		, ((ip & 0xFF000000) >> 24) & 0xFF
-		, ((ip & 0x00FF0000) >> 16) & 0xFF
-		, ((ip & 0x0000FF00) >>  8) & 0xFF
-		, ((ip & 0x000000FF) >>  0) & 0xFF
-		, FindConVar("hostport").IntValue
+	FormatEx(
+		g_sServerIP,
+		sizeof g_sServerIP,
+		"%d.%d.%d.%d:%d",
+		((ip & 0xFF000000) >> 24) & 0xFF,
+		((ip & 0x00FF0000) >> 16) & 0xFF,
+		((ip & 0x0000FF00) >>  8) & 0xFF,
+		((ip & 0x000000FF) >>  0) & 0xFF,
+		FindConVar("hostport").IntValue
 	);
 
 	if (g_bLateLoad) {
 		for (int i = 1; i <= MaxClients; ++i) {
-			if (IsClientInGame(i) && !IsFakeClient(i) && !IsClientSourceTV(i) && !IsClientReplay(i) && IsClientAuthorized(i)) {
+			if (IsClientInGame(i) && !IsFakeClient(i) && !IsClientSourceTV(i)
+			&& !IsClientReplay(i) && IsClientAuthorized(i)) {
 				GetClientAuthId(i, AuthId_Steam2, g_PData[i].auth2, sizeof PlayerData::auth2);
 			}
 		}
@@ -232,79 +236,81 @@ public void dbConnect(Database db, const char[] error, any data) {
 	g_Database.Driver.GetProduct(dbType, sizeof dbType);
 
 	char increment[16];
-	strcopy(increment, sizeof increment
-		, (StrEqual(dbType, "mysql", false) ? "AUTO_INCREMENT" : "AUTOINCREMENT")
+	strcopy(
+		increment,
+		sizeof increment,
+		(StrEqual(dbType, "mysql", false) ? "AUTO_INCREMENT" : "AUTOINCREMENT")
 	);
 
 	char query[1024];
 	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `connect_sessions` "
-		... "("
-			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
-			... "`serverip` VARCHAR(39) NOT NULL, "
-			... "`playerCount` TINYINT NOT NULL, "
-			... "`map` VARCHAR(80) NOT NULL, "
-			... "`name` VARCHAR(64) NOT NULL, "
-			... "`authid2` VARCHAR(32) DEFAULT NULL, "
-			... "`method` VARCHAR(64) DEFAULT NULL, "
-			... "`date` DATE NOT NULL, "
-			... "`time` TIME(0) NOT NULL, "
-			... "`day` TINYINT NOT NULL, "
-			... "`dateString` VARCHAR(32) NOT NULL, "
-			... "`duration` INT DEFAULT NULL, "
-			... "`ip` VARCHAR(39) NOT NULL, "
-			... "`city` VARCHAR(64) NOT NULL, "
-			... "`region` VARCHAR(64) NOT NULL, "
-			... "`country` VARCHAR(64) NOT NULL"
-		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
-		, increment
+		query,
+		sizeof query,
+		"CREATE TABLE IF NOT EXISTS `connect_sessions` " ...
+		"(" ...
+			"`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, " ...
+			"`serverip` VARCHAR(39) NOT NULL, " ...
+			"`playerCount` TINYINT NOT NULL, " ...
+			"`map` VARCHAR(80) NOT NULL, " ...
+			"`name` VARCHAR(64) NOT NULL, " ...
+			"`authid2` VARCHAR(32) DEFAULT NULL, " ...
+			"`method` VARCHAR(64) DEFAULT NULL, " ...
+			"`date` DATE NOT NULL, " ...
+			"`time` TIME(0) NOT NULL, " ...
+			"`day` TINYINT NOT NULL, " ...
+			"`dateString` VARCHAR(32) NOT NULL, " ...
+			"`duration` INT DEFAULT NULL, " ...
+			"`ip` VARCHAR(39) NOT NULL, " ...
+			"`city` VARCHAR(64) NOT NULL, " ...
+			"`region` VARCHAR(64) NOT NULL, " ...
+			"`country` VARCHAR(64) NOT NULL" ...
+		") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4",
+		increment
 	);
 
 	g_Database.Query(dbCreateTable, query);
 
 	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `connect_totals` "
-		... "("
-			... "`authid2` VARCHAR(32) NOT NULL PRIMARY KEY, "
-			... "`totalTime` INT NOT NULL, "
-			... "`totalConnects` INT NOT NULL"
-		... ")"
+		query,
+		sizeof query,
+		"CREATE TABLE IF NOT EXISTS `connect_totals` " ...
+		"(" ...
+			"`authid2` VARCHAR(32) NOT NULL PRIMARY KEY, " ...
+			"`totalTime` INT NOT NULL, " ...
+			"`totalConnects` INT NOT NULL" ...
+		")"
 	);
 
 	g_Database.Query(dbCreateTable, query);
 
 	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `map_sessions` "
-		... "("
-			... "`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, "
-			... "`serverip` VARCHAR(39) NOT NULL, "
-			... "`map` VARCHAR(80), "
-			... "`date` DATE NOT NULL, "
-			... "`time` TIME(0) NOT NULL, "
-			... "`day` TINYINT NOT NULL, "
-			... "`dateString` VARCHAR(32) NOT NULL, "
-			... "`duration` INT DEFAULT NULL"
-		... ") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4"
-		, increment
+		query,
+		sizeof query,
+		"CREATE TABLE IF NOT EXISTS `map_sessions` " ...
+		"(" ...
+			"`id` INT UNSIGNED NOT NULL %s PRIMARY KEY, " ...
+			"`serverip` VARCHAR(39) NOT NULL, " ...
+			"`map` VARCHAR(80), " ...
+			"`date` DATE NOT NULL, " ...
+			"`time` TIME(0) NOT NULL, " ...
+			"`day` TINYINT NOT NULL, " ...
+			"`dateString` VARCHAR(32) NOT NULL, " ...
+			"`duration` INT DEFAULT NULL" ...
+		") ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4",
+		increment
 	);
 
 	g_Database.Query(dbCreateTable, query);
 
 	g_Database.Format(
-		  query
-		, sizeof query
-		, "CREATE TABLE IF NOT EXISTS `map_totals` "
-		... "("
-			... "`map` VARCHAR(80) NOT NULL PRIMARY KEY, "
-			... "`totalTime` INT NOT NULL, "
-			... "`totalSessions` INT NOT NULL"
-		... ")"
+		query,
+		sizeof query,
+		"CREATE TABLE IF NOT EXISTS `map_totals` " ...
+		"(" ...
+			"`map` VARCHAR(80) NOT NULL PRIMARY KEY, " ...
+			"`totalTime` INT NOT NULL, " ...
+			"`totalSessions` INT NOT NULL" ...
+		")"
 	);
 
 	g_Database.Query(dbCreateTable, query);
@@ -350,8 +356,10 @@ void attemptLoadMapSession() {
 	g_Database.Format(
 		query,
 		sizeof query,
-		"SELECT `id`, `duration` FROM `map_sessions` "
-	... "WHERE `map` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
+		"SELECT `id`, `duration` " ...
+		"FROM `map_sessions` " ...
+		"WHERE `map` = '%s' AND `serverip` = '%s' " ...
+		"ORDER BY `id` DESC LIMIT 0, 1",
 		g_sMapName,
 		g_sServerIP
 	);
@@ -392,23 +400,25 @@ void startMapSession() {
 	FormatTime(timeString, sizeof timeString, "%H:%M:%S %p %a %d %b %Y");
 
 	char query[2048];
-	g_Database.Format(query, sizeof query,
-		"INSERT INTO `map_sessions` "
-	... "("
-		... "`serverip`, "
-		... "`map`, "
-		... "`date`, "
-		... "`time`, "
-		... "`day`, "
-		... "`dateString`"
-	... ")"
-	... "VALUES ('%s', '%s', '%s', '%s', '%s', '%s')"
-		, g_sServerIP
-		, g_sMapName
-		, date
-		, time
-		, day
-		, timeString
+	g_Database.Format(
+		query,
+		sizeof query,
+		"INSERT INTO `map_sessions` " ...
+		"(" ...
+			"`serverip`, " ...
+			"`map`, " ...
+			"`date`, " ...
+			"`time`, " ...
+			"`day`, " ...
+			"`dateString`" ...
+		")" ...
+		"VALUES ('%s', '%s', '%s', '%s', '%s', '%s')",
+		g_sServerIP,
+		g_sMapName,
+		date,
+		time,
+		day,
+		timeString
 	);
 
 	g_Database.Query(dbMapSession, query);
@@ -428,10 +438,12 @@ void endMapSession() {
 	
 	char query[128];
 
-	g_Database.Format(query, sizeof query,
-		"UPDATE `map_sessions` "
-	... "SET `duration` = %i "
-	... "WHERE `id` = %i",
+	g_Database.Format(
+		query,
+		sizeof query,
+		"UPDATE `map_sessions` " ...
+		"SET `duration` = %i " ...
+		"WHERE `id` = %i",
 		duration,
 		g_iMapId
 	);
@@ -478,16 +490,20 @@ public void dbSelectMapTotals(Database db, DBResultSet results, const char[] err
 		int time = results.FetchInt(0);
 		int count = results.FetchInt(1);
 
-		g_Database.Format(query, sizeof query,
-			"UPDATE `map_totals` "
-		... "SET `totalTime` = %i, `totalSessions` = %i "
-		... "WHERE `map` = '%s'",
+		g_Database.Format(
+			query,
+			sizeof query,
+			"UPDATE `map_totals` " ...
+			"SET `totalTime` = %i, `totalSessions` = %i " ...
+			"WHERE `map` = '%s'",
 			time + current, count + view_as<int>(!g_bPluginEnding), // dont add 1 if plugin is ending early
 			map
 		);
 	}
 	else {
-		g_Database.Format(query, sizeof query,
+		g_Database.Format(
+			query,
+			sizeof query,
 			"INSERT INTO `map_totals` (`map`, `totalTime`, `totalSessions`) VALUES ('%s', %i, 1)",
 			map,
 			current
@@ -517,8 +533,9 @@ void attemptLoadClientSession(int client) {
 	g_Database.Format(
 		query,
 		sizeof query,
-		"SELECT `id` FROM `connect_sessions` "
-	... "WHERE `authid2` = '%s' AND `serverip` = '%s' ORDER BY `id` DESC LIMIT 0, 1",
+		"SELECT `id` FROM `connect_sessions` " ...
+		"WHERE `authid2` = '%s' AND `serverip` = '%s' " ...
+		"ORDER BY `id` DESC LIMIT 0, 1",
 		g_PData[client].auth2,
 		g_sServerIP
 	);
@@ -560,7 +577,7 @@ void startClientSession(int client) {
 	}
 
 	char date[16];
-	FormatTime(date, sizeof(date), "%Y-%m-%d");
+	FormatTime(date, sizeof date, "%Y-%m-%d");
 
 	char time[32];
 	FormatTime(time, sizeof time, "%X");
@@ -587,35 +604,37 @@ void startClientSession(int client) {
 	g_Database.Format(location, sizeof location, "'%s', '%s', '%s'", city, region, country);
 
 	char query[2048];
-	FormatEx(query, sizeof query,
-		"INSERT INTO `connect_sessions` "
-	... "("
-		... "`serverip`, "
-		... "`playercount`, "
-		... "`map`, "
-		... "`name`, "
-		... "`method`, "
-		... "`date`, "
-		... "`time`, "
-		... "`day`, "
-		... "`dateString`, "
-		... "`ip`, "
-		... "`city`, "
-		... "`region`, "
-		... "`country`"
-	... ")"
-	... "VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', %s)"
-		, g_sServerIP
-		, GetCurrentPlayerCount(client)
-		, g_sMapName
-		, name
-		, method
-		, date
-		, time
-		, day
-		, timeString
-		, ip
-		, location
+	FormatEx(
+		query,
+		sizeof query,
+		"INSERT INTO `connect_sessions` " ...
+		"(" ...
+			"`serverip`, " ...
+			"`playercount`, " ...
+			"`map`, " ...
+			"`name`, " ...
+			"`method`, " ...
+			"`date`, " ...
+			"`time`, " ...
+			"`day`, " ...
+			"`dateString`, " ...
+			"`ip`, " ...
+			"`city`, " ...
+			"`region`, " ...
+			"`country`" ...
+		")" ...
+		"VALUES ('%s', %i, '%s', '%s', %s, '%s', '%s', %s, '%s', '%s', %s)",
+		g_sServerIP,
+		GetCurrentPlayerCount(client),
+		g_sMapName,
+		name,
+		method,
+		date,
+		time,
+		day,
+		timeString,
+		ip,
+		location
 	);
 
 	g_Database.Query(dbClientConnect, query, GetClientUserId(client));
@@ -639,10 +658,12 @@ public void dbClientConnect(Database db, DBResultSet results, const char[] error
 
 void runAuthQuery(int client) {
 	char query[256];
-	g_Database.Format(query, sizeof query,
-		"UPDATE `connect_sessions` "
-	... "SET `authid2` = '%s'"
-	... "WHERE `id` = %i",
+	g_Database.Format(
+		query,
+		sizeof query,
+		"UPDATE `connect_sessions` " ...
+		"SET `authid2` = '%s'" ...
+		"WHERE `id` = %i",
 		g_PData[client].auth2,
 		g_PData[client].id
 	);
@@ -663,9 +684,9 @@ void endClientSession(int client) {
 	char query[128];
 
 	g_Database.Format(query, sizeof query,
-		"UPDATE `connect_sessions` "
-	... "SET `duration` = %i "
-	... "WHERE `id` = %i",
+		"UPDATE `connect_sessions` " ...
+		"SET `duration` = %i " ...
+		"WHERE `id` = %i",
 		duration,
 		g_PData[client].id
 	);
@@ -678,7 +699,9 @@ void endClientSession(int client) {
 		dp.WriteString(g_PData[client].auth2);
 
 		g_Database.Format(query, sizeof query,
-			"SELECT `totalTime`, `totalConnects` FROM `connect_totals` WHERE `authid2` = '%s'",
+			"SELECT `totalTime`, `totalConnects` "  ...
+			"FROM `connect_totals` "  ...
+			"WHERE `authid2` = '%s'",
 			g_PData[client].auth2
 		);
 
@@ -714,17 +737,20 @@ public void dbSelectPlayerTotals(Database db, DBResultSet results, const char[] 
 		int time = results.FetchInt(0);
 		int count = results.FetchInt(1);
 
-		g_Database.Format(query, sizeof query,
-			"UPDATE `connect_totals` "
-		... "SET `totalTime` = %i, `totalConnects` = %i "
-		... "WHERE `authid2` = '%s'",
+		g_Database.Format(
+			query,
+			sizeof query,
+			"UPDATE `connect_totals` " ...
+			"SET `totalTime` = %i, `totalConnects` = %i " ...
+			"WHERE `authid2` = '%s'",
 			time + current, count + view_as<int>(!g_bPluginEnding), // dont add 1 if plugin is ending early
 			authid2
 		);
 	}
 	else {
 		g_Database.Format(query, sizeof query,
-			"INSERT INTO `connect_totals` (`authid2`, `totalTime`, `totalConnects`) VALUES ('%s', %i, 1)",
+			"INSERT INTO `connect_totals` (`authid2`, `totalTime`, `totalConnects`) " ...
+			"VALUES ('%s', %i, 1)",
 			authid2,
 			current
 		);
